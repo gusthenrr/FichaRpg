@@ -1,0 +1,84 @@
+item,preco,categoria_id
+300g camarao,60,3
+300g fritas,30,3
+300g fritas 300g peixes 300g camarao,130,3
+300g peixe,50,3
+500g camarao,95,3
+500g camarao 500g fritas,130,3
+500g fritas,45,3
+500g fritas 1kg camarao,215,3
+500g fritas 1kg peixe,190,3
+500g fritas 500g camarao 500g peixe,200,3
+500g peixe,80,3
+500g peixe 500g fritas,115,3
+500g peixe 500g camarao,160,3
+1kg camarao,175,3
+1kg peixe,150,3
+absolut,12,2
+agua,5,1
+agua com gás,6,1
+agua de coco 1l,25,1
+agua de coco 500ml,15,1
+batida,22,2
+batida absolut,40,2
+batida cachaca luxo,28,2
+batida smirnoff,28,2
+batida velho barreiro,23,2
+bee's kees tanqueray,35,2
+bee's knees seagers,30,2
+bombeirao,15,2
+bombeirinho,10,2
+brahma duplo malte,8,1
+budweiser,10,1
+cabeleira do zeze,25,2
+cachaca luxo,7,2
+caipibeer luxe,25,2
+caipibeer smirnoff,25,2
+caipibeer velho barreiro,25,2
+caipibeer vinho,25,2
+caipirinha,18,2
+caipirinha gourmet,30,2
+caribenho,27,2
+coca,8,1
+coca zero,8,1
+corona,11,1
+cp,20,2
+cp gourmet,35,2
+cp luxe,25,2
+cp luxe gourmet,40,2
+cp rum,27,2
+cp rum gourmet,40,2
+cp seagers,25,2
+cp tanqueray,35,2
+cp tequila,37,2
+cp whisky,40,2
+cv,25,2
+cv absolut,35,2
+cv absolut gourmet,55,2
+daiquiri,20,2
+dingle bell,25,2
+dingle bell,30,2
+espanhola,25,2
+espanhola,30,2
+fanta,8,1
+fitzgerald seagers,35,2
+fitzgerald tanqueray,45,2
+fozen,30,2
+g&tea seagers,35,2
+g&tea tanqueray,45,2
+gin fizz seagers,30,2
+gin fizz tanqueray,40,2
+gin mojito seagers,30,2
+gin mojito tanqueray,40,2
+gin screwdriver seagers,30,2
+gin screwdriver tanqueray,40,2
+gin tonica seagers,35,2
+gin tonica tanqueray,45,2
+guarana,8,1
+guarana zero,8,1
+guaraviton,7,1
+h2o limoneto,8,1
+h2o,8,1
+hanky panky seagers,30,2
+hanky panky tanqueray,40,2
+heineken,10,1
