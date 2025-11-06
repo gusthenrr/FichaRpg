@@ -1,9 +1,10 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from cs50 import SQL
-from back_end import Ficha, Molodoy  # usa suas classes
+from back_end import Ficha, Molodoy, Atributo, Dados,Usuario
 import random
 import time 
+import datetime
 
 app = Flask(__name__)
 db = SQL("sqlite:///app.db")
@@ -13,29 +14,36 @@ ALLOWED_CLASSES = {"Ladino", "Guerreiro", "Bárbaro"}
 ALLOWED_RACES = {"Humano", "Elfo", "Anão", "Halfling", "Meio-Orc"}
 POOL = [15, 14, 13, 12, 10, 8]
 
-def get_user_by_user_or_email(user_or_email: str):
+def get_user_or_email(user_or_email: str):
     rows = db.execute(
         "SELECT id, userName, email FROM users WHERE userName = ? OR email = ? LIMIT 1",
         user_or_email, user_or_email
     )
     return rows[0] if rows else None
 
-def modifiers_from(score: int) -> int:
-    return (int(score) - 10) // 2
+def definir_modificador(atributo_data):
+    atributo = Atributo(atributo_data)
+    return atributo, atributo.modificador
 
 def row_to_ficha_json(row):
+    forca, forca_mod = definir_modificador(row["forca"])
+    destreza, destreza_mod = definir_modificador(row["destreza"])
+    constituicao, const_mod = definir_modificador(row['constituicao'])
+    inteligencia, inteligencia_mod = definir_modificador(row['inteligencia'])
+    sabedoria, sabedoria_mod = definir_modificador(row['sabedoria'])
+    carisma, carisma_mod = definir_modificador(row['carisma'])
     return {
         "nome": row["nome"],
         "raca": row["raca"],
         "classe": row["classe"],
         "vida": row["vida"],
         "ca": row["ca"],
-        "forca": {"pontos": row["forca"], "modificador": modifiers_from(row["forca"])},
-        "destreza": {"pontos": row["destreza"], "modificador": modifiers_from(row["destreza"])},
-        "constituicao": {"pontos": row["constituicao"], "modificador": modifiers_from(row["constituicao"])},
-        "inteligencia": {"pontos": row["inteligencia"], "modificador": modifiers_from(row["inteligencia"])},
-        "sabedoria": {"pontos": row["sabedoria"], "modificador": modifiers_from(row["sabedoria"])},
-        "carisma": {"pontos": row["carisma"], "modificador": modifiers_from(row["carisma"])},
+        "forca": {"pontos": forca, "modificador": forca_mod},
+        "destreza": {"pontos": destreza, "modificador": destreza_mod},
+        "constituicao": {"pontos": constituicao, "modificador": const_mod},
+        "inteligencia": {"pontos": inteligencia, "modificador": inteligencia_mod},
+        "sabedoria": {"pontos": sabedoria, "modificador": sabedoria_mod},
+        "carisma": {"pontos": carisma, "modificador": carisma_mod},
     }
 
 def validate_pool(attrs: dict) -> bool:
@@ -45,24 +53,26 @@ def validate_pool(attrs: dict) -> bool:
         return False
     return values == sorted(POOL)
 
-# ---------------------- AUTH -------------------------
+
 @app.post("/cadastro")
 def cadastrar():
     data = request.get_json(silent=True) or {}
     userName = (data.get("userName") or "").strip()
     email = (data.get("email") or "").strip().lower()
     senha = data.get("senha") or ""
-    if not userName or not email or not senha:
+    now=datetime.now()
+    usuario=Usuario(userName, email, senha, now)
+    if not usuario.__userName or not usuario.__email or not usuario.__passWord:
         return jsonify(success=False, message="Campos obrigatórios ausentes"), 400
 
     exists = db.execute(
         "SELECT id FROM users WHERE userName = ? OR email = ? LIMIT 1",
-        userName, email
+        usuario.__userName, usuario.__email
     )
     if exists:
         return jsonify(success=False, message="Usuário ou email já existe"), 409
 
-    db.execute("INSERT INTO users (userName, email, password_hash) VALUES (?, ?, ?)", userName, email, senha)
+    db.execute("INSERT INTO users (userName, email, password_hash) VALUES (?, ?, ?)", usuario.__userName, usuario.__email, usuario.__passWord)
     return jsonify(success=True, message="Conta criada"), 201
 
 @app.post("/login")
@@ -73,7 +83,7 @@ def login():
     if not user_or_email or not senha:
         return jsonify(success=False, message="Campos obrigatórios ausentes"), 400
 
-    user = get_user_by_user_or_email(user_or_email)
+    user = get_user_or_email(user_or_email)
     if not user:
         return jsonify(success=False, message="Credenciais inválidas"), 401
 
@@ -83,14 +93,14 @@ def login():
 
     return jsonify(success=True, user={"id": user["id"], "userName": user["userName"], "email": user["email"]}), 200
 
-# ---------------------- FICHA: consulta existente ------------------------
+
 @app.get("/ficha")
 def get_ficha():
     userName = (request.args.get("userName") or "").strip()
     if not userName:
         return jsonify(success=False, message="Informe userName"), 400
 
-    user = get_user_by_user_or_email(userName)
+    user = get_user_or_email(userName)
     if not user:
         return jsonify(success=False, message="Usuário não encontrado"), 404
 
@@ -99,8 +109,8 @@ def get_ficha():
         return jsonify(success=False, message="Ficha não encontrada"), 404
 
     return jsonify(success=True, ficha=row_to_ficha_json(rows[0])), 200
+    
 
-# ---------------------- FICHA: rolar VIDA (não persiste) -----------------
 @app.post("/ficha/roll/vida")
 def ficha_roll_vida():
     data = request.get_json(silent=True) or {}
@@ -119,7 +129,7 @@ def ficha_roll_vida():
     if not validate_pool(attrs):
         return jsonify(success=False, message="Atributos inválidos; use o pool [15,14,13,12,10,8] sem repetição"), 400
 
-    user = get_user_by_user_or_email(userName)
+    user = get_user_or_email(userName)
     if not user:
         return jsonify(success=False, message="Usuário não encontrado"), 404
 
@@ -127,17 +137,20 @@ def ficha_roll_vida():
     if exists:
         return jsonify(success=False, message="Usuário já possui ficha"), 409
 
-    # vida conforme regra da sua classe
     regra = Ficha.vida_regras.get(classe)
     faces, minimo = int(regra["dado"]), int(regra["min"])
-    r1 = random.randint(1, faces)
-    r2 = random.randint(1, faces)
-    base = max(r1 + r2, minimo)
-    con_mod = modifiers_from(int(attrs["constituicao"]))
-    vida = max(base + con_mod, 1)
-    return jsonify(success=True, r1=r1, r2=r2, base=base, conMod=con_mod, vida=vida), 200
+    dados = Dados()
+    if faces==8:dado=dados.d8()
+    elif faces==10: dado = dados.d10()
+    else: dado = dados.d12()
+    r1 = dado
+    print('dado: ', r1)
+    base = max(r1,minimo)
+    r1=base
+    constituicao, con_mod = definir_modificador(int(attrs["constituicao"]))
+    vida = max(r1 + con_mod, 1)
+    return jsonify(success=True, r1=r1, conMod=con_mod, vida=vida, dado=faces), 200
 
-# ---------------------- FICHA: rolar CA (cosmético) & persistir ----------
 @app.post("/ficha/roll/ca")
 def ficha_roll_ca():
     data = request.get_json(silent=True) or {}
@@ -152,7 +165,7 @@ def ficha_roll_ca():
     if classe not in ALLOWED_CLASSES or raca not in ALLOWED_RACES or not validate_pool(attrs):
         return jsonify(success=False, message="Dados inválidos"), 400
 
-    user = get_user_by_user_or_email(userName)
+    user = get_user_or_email(userName)
     if not user:
         return jsonify(success=False, message="Usuário não encontrado"), 404
 
@@ -160,11 +173,9 @@ def ficha_roll_ca():
     if exists:
         return jsonify(success=False, message="Usuário já possui ficha"), 409
 
-    # CA é determinística: 10 + mod de Destreza
-    dex_mod = modifiers_from(int(attrs["destreza"]))
+    destreza, dex_mod = definir_modificador(int(attrs["destreza"]))
     ca = 10 + dex_mod
 
-    # persistir ficha
     db.execute("""
         INSERT INTO fichas (
           user_id, nome, raca, classe,
@@ -178,31 +189,16 @@ def ficha_roll_ca():
     int(vida), int(ca))
 
     row = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1", user["id"])[0]
-    # Valor "fake" só para animar o dado no front
-    fake_roll = random.randint(1, 20)
-    return jsonify(success=True, ca=ca, dexMod=dex_mod, fakeRoll=fake_roll, ficha=row_to_ficha_json(row)), 201
+    return jsonify(success=True, ca=ca, dexMod=dex_mod, ficha=row_to_ficha_json(row)), 201
 
-# ---------------------- MONSTROS -----------------------------------------
-@app.post("/monstros/seed")
-def seed_monstros():
-    count = int(request.args.get("count", 5))
-    nomes = []
-    prefix = ["Gor", "Mor", "Zul", "Vor", "Krag", "Tor", "Az", "Bal", "Ur", "Rok"]
-    suffix = ["gash", "mok", "thar", "grom", "nak", "zul", "rak", "dor", "grim", "mog"]
-    for _ in range(count):
-        nome = random.choice(prefix) + random.choice(suffix)
-        # tipo Molodoy dos seus classes, hp/ca padrão (poderia variar)
-        hp, ca = 19, 11
-        db.execute("INSERT INTO monstros (nome, tipo, hp, ca) VALUES (?, 'Molodoy', ?, ?)", nome, hp, ca)
-        nomes.append(nome)
-    return jsonify(success=True, created=len(nomes), nomes=nomes), 201
+
 
 @app.get("/monstros")
 def list_monstros():
     rows = db.execute("SELECT id, nome, tipo, hp, ca FROM monstros ORDER BY id DESC")
     return jsonify(success=True, monstros=rows), 200
 
-# ---------------------- BATALHA ------------------------------------------
+
 @app.post("/batalha/iniciar")
 def batalha_iniciar():
     data = request.get_json(silent=True) or {}
@@ -211,7 +207,7 @@ def batalha_iniciar():
     if not userName or not monstro_id:
         return jsonify(success=False, message="Informe userName e monstro_id"), 400
 
-    user = get_user_by_user_or_email(userName)
+    user = get_user_or_email(userName)
     if not user:
         return jsonify(success=False, message="Usuário não encontrado"), 404
     ficha_rows = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1", user["id"])
@@ -243,9 +239,10 @@ def batalha_roll_initiative():
 
     # carrega ficha para pegar destreza
     ficha = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1", b["user_id"])[0]
-    dex_mod = modifiers_from(ficha["destreza"])
-    d20_player = random.randint(1, 20)
-    d20_monstro = random.randint(1, 20)
+    destreza, dex_mod = definir_modificador(ficha["destreza"])
+    d20=Dados()
+    d20_player = d20.d20()
+    d20_monstro = d20.d20()
 
     if d20_player + dex_mod >= d20_monstro:
         fase = "player"
@@ -268,9 +265,10 @@ def batalha_player_attack():
     ficha = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1", b["user_id"])[0]
     monstro = db.execute("SELECT * FROM monstros WHERE id = ? LIMIT 1", b["monstro_id"])[0]
     # ataque do herói: d20 + mod Força (+2 prof de exemplo)
-    for_mod = modifiers_from(ficha["forca"])
+    forca, for_mod = definir_modificador(ficha['forca'])
     prof = 2
-    d20 = random.randint(1, 20)
+    dado = Dados()
+    d20 = dado.d20()
     ataque_total = d20 + for_mod + prof
     hit = False; critico = False; dano = 0
     if d20 == 1:
@@ -280,10 +278,9 @@ def batalha_player_attack():
         if critico or ataque_total >= monstro["ca"]:
             hit = True
             # dano: 1d8 + mod força (mínimo 1). Crítico dobra os dados (não o bônus).
-            d_dado = random.randint(1, 8)
-            dano = d_dado + for_mod
-            if critico:
-                dano += random.randint(1, 8)
+            d_dado = dado.d8()
+            d_dado2 = dado.d8()
+            dano = d_dado + d_dado2 + for_mod
             dano = max(dano, 1)
 
     new_m_hp = b["m_hp"] - (dano if hit else 0)
@@ -310,7 +307,6 @@ def batalha_monstro_attack():
     if b["fase"] != "monster": return jsonify(success=False, message="Não é a vez do monstro"), 400
 
     ficha = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1", b["user_id"])[0]
-    # alvo "simples" para usar Molodoy.atacar (precisa de .vida e .ca)
     class Target:
         def __init__(self, vida, ca):
             self.vida = vida
@@ -319,7 +315,7 @@ def batalha_monstro_attack():
     monstro = db.execute("SELECT * FROM monstros WHERE id = ? LIMIT 1", b["monstro_id"])[0]
     # Por enquanto, monstro tipo Molodoy
     mol = Molodoy()
-    resultado = mol.atacar(alvo)  # altera alvo.vida
+    resultado = mol.atacar(alvo)  
 
     new_j_vida = int(alvo.vida)
     vencedor = None

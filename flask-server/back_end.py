@@ -1,5 +1,19 @@
 import random
+import datetime
 from abc import ABC, abstractmethod, ABCMeta
+class Usuario:
+    __userName:str
+    __email:str
+    __passWord:str
+    __created_at:datetime
+    def __init__(self, userName, email, passWord):
+        self.__userName=userName
+        self.__email=email
+        self.__passWord=passWord
+        self.__created_at=datetime.now()
+    def __str__(self):
+        return f'UserName: {self.__userName}'
+
 
 class Dados:
     def __init__(self):
@@ -25,7 +39,7 @@ class Atributo:
         self.modificador = mod
         return mod
 
-class Ficha:
+class Ficha():
     vida_regras = {
         "Ladino":    {"dado": 8,  "min": 5},
         "Guerreiro": {"dado": 10, "min": 6},
