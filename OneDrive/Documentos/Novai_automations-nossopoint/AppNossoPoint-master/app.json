@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "NossoPoint",
+    "slug": "testando-api",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.jpg",
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/7e480f65-cc6b-476f-b57d-270e50206802"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "bundleIdentifier": "com.gbiondinova.nossopoint",
+      "autoIncrement": true,
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPushNotificationUsageDescription": "Este aplicativo usará notificações para alertar o usuário quando um novo pedido for enviado.",
+        "UIBackgroundModes": [
+          "remote-notification",
+          "remote-notification"
+        ]
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
+      
+    },
+    "android": {
+      "package": "com.gbiondinova.nossopoint",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "useNextNotificationsApi": true,
+      "runtimeVersion": "1.0.0"
+    },    
+    "plugins": [
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7e480f65-cc6b-476f-b57d-270e50206802"
+      }
+    },
+    "owner": "gbiondinova"
+  }
+}
