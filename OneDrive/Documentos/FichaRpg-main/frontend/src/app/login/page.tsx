@@ -1,0 +1,110 @@
+'use client';
+
+import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Cinzel, Uncial_Antiqua } from 'next/font/google';
+import styles from '../ui/auth.module.css';
+
+const cinzel = Cinzel({ subsets: ['latin'], weight: ['400', '700'] });
+const uncial = Uncial_Antiqua({ subsets: ['latin'], weight: '400' });
+
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:5000';
+
+export default function Login() {
+  const router = useRouter();
+  const [userName, setUserName] = useState('');
+  const [senha, setSenha] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
+
+  async function handleLogin(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLoading(true);
+    setErro('');
+    try {
+      const res = await fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName, senha }),
+      });
+      if (!res.ok) {
+        const { message } = (await safeJson(res)) ?? {};
+        throw new Error(message || 'Falha no login');
+      }
+      localStorage.setItem('userName', userName);
+      router.push('/ficha'); // ajuste o destino
+    } catch (err: any) {
+      setErro(err?.message ?? 'Erro inesperado ao entrar');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className={`${styles.root} ${cinzel.className}`}>
+      <div className={styles.card}>
+        <header className={styles.header}>
+          <h1 className={`${styles.title} ${uncial.className}`}>Portão do Aventureiro</h1>
+          <p className={styles.subtitle}>Insira suas credenciais para adentrar a taverna</p>
+        </header>
+
+        <div className={styles.content}>
+          <form onSubmit={handleLogin} className={styles.form}>
+            <label className={styles.label} htmlFor="userName">Nome do Herói</label>
+            <input
+              id="userName"
+              name="userName"
+              className={styles.input}
+              placeholder="ex.: Arannis, Morgana..."
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              required
+              autoComplete="username"
+            />
+
+            <label className={styles.label} htmlFor="senha">Palavra-secreta</label>
+            <div className={styles.passRow}>
+              <input
+                id="senha"
+                name="senha"
+                className={styles.input}
+                type={showPass ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className={styles.btnGhost}
+                onClick={() => setShowPass((v) => !v)}
+                aria-label={showPass ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {showPass ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </div>
+
+            {erro && <p className={styles.error}>{erro}</p>}
+
+            <div className={styles.actions}>
+              <button type="submit" className={styles.btnPrimary} disabled={loading}>
+                {loading ? 'Lançando dados...' : 'Entrar'}
+              </button>
+              <Link href="/cadastro" className={styles.btnSecondary}>
+                Cadastrar-se
+              </Link>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+async function safeJson(res: Response) {
+  try { return await res.json(); } catch { return null; }
+}
