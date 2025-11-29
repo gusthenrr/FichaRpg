@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from cs50 import SQL
-from back_end import Ficha, Molodoy, Atributo, Dados,Usuario,Jogador
+from back_end import Ficha, Molodoy, Atributo, Dados
 import random
 import time 
 import datetime
@@ -220,7 +220,7 @@ def batalha_iniciar():
         return jsonify(success=False, message="Monstro não encontrado"), 404
     monstro = monstro_rows[0]
 
-    # cria batalha
+    # Guardando o historico das batalhas, para nao perder o estado da vida dos personagens, tanto do jogador quanto do mmonstro
     db.execute("""
       INSERT INTO batalhas (user_id, monstro_id, j_vida, m_hp, fase, turno)
       VALUES (?, ?, ?, ?, 'initiative', 1)
@@ -230,6 +230,8 @@ def batalha_iniciar():
 
 @app.post("/batalha/roll/initiative")
 def batalha_roll_initiative():
+    """Rola a iniciativa para decidir quem começa a batalha, entre o jogador ou o monstro, quem começa atacando."""
+
     data = request.get_json(silent=True) or {}
     battle_id = int(data.get("battle_id") or 0)
     if not battle_id: return jsonify(success=False, message="battle_id é obrigatório"), 400
@@ -237,7 +239,7 @@ def batalha_roll_initiative():
     if not b: return jsonify(success=False, message="Batalha não encontrada"), 404
     if b["fase"] != "initiative": return jsonify(success=False, message="Fase inválida"), 400
 
-    # carrega ficha para pegar destreza
+    # carrega ficha para pegar destreza, atributo necessário para o cálculo da iniciativa do jogador
     ficha = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1", b["user_id"])[0]
     destreza, dex_mod = definir_modificador(ficha["destreza"])
     d20=Dados()
@@ -257,33 +259,40 @@ def batalha_roll_initiative():
 def batalha_player_attack():
     data = request.get_json(silent=True) or {}
     battle_id = int(data.get("battle_id") or 0)
-    if not battle_id: return jsonify(success=False, message="battle_id é obrigatório"), 400
+    if not battle_id:
+        return jsonify(success=False, message="battle_id é obrigatório"), 400
+
     b = get_battle(battle_id)
-    if not b: return jsonify(success=False, message="Batalha não encontrada"), 404
-    if b["fase"] != "player": return jsonify(success=False, message="Não é a vez do jogador"), 400
+    if not b:
+        return jsonify(success=False, message="Batalha não encontrada"), 404
 
-    ficha = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1", b["user_id"])[0]
-    monstro = db.execute("SELECT * FROM monstros WHERE id = ? LIMIT 1", b["monstro_id"])[0]
-    # ataque do herói: d20 + mod Força (+2 prof de exemplo)
-    forca, for_mod = definir_modificador(ficha['forca'])
-    prof = 2
-    dado = Dados()
-    d20 = dado.d20()
-    ataque_total = d20 + for_mod + prof
-    hit = False; critico = False; dano = 0
-    if d20 == 1:
+    if b["fase"] != "player":
+        return jsonify(success=False, message="Não é a vez do jogador"), 400
+    # ficha do jogador
+    ficha_row = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1",b["user_id"],)[0]
+    # monstro da batalha
+    monstro_row = db.execute("SELECT * FROM monstros WHERE id = ? LIMIT 1",b["monstro_id"],)[0]
+
+    ficha = Ficha.from_db_row(ficha_row)
+    monstro = Molodoy.from_db_row(monstro_row)
+    # usar HP atual da batalha
+    monstro.hp = b["m_hp"]
+    # ataque
+    resultado = ficha.atacar(monstro)  # <- nome certo
+    d20 = resultado["d20"]
+    ataque_total = d20 + ficha.forca.modificador  # se quiser exibir o total
+
+    if resultado["tipo"] in ("errou", "falha"):
         hit = False
+        critico = False
+        dano = 0
     else:
-        critico = (d20 == 20)
-        if critico or ataque_total >= monstro["ca"]:
-            hit = True
-            # dano: 1d8 + mod força (mínimo 1). Crítico dobra os dados (não o bônus).
-            d_dado = dado.d8()
-            d_dado2 = dado.d8()
-            dano = d_dado + d_dado2 + for_mod
-            dano = max(dano, 1)
+        hit = True
+        critico = resultado["critico"]
+        dano = resultado["dano"]
 
-    new_m_hp = b["m_hp"] - (dano if hit else 0)
+    new_m_hp = resultado["hp_alvo"]
+
     vencedor = None
     fase = "monster"
     if new_m_hp <= 0:
@@ -291,33 +300,80 @@ def batalha_player_attack():
         fase = "ended"
         vencedor = "player"
 
-    db.execute("UPDATE batalhas SET m_hp = ?, fase = ?, vencedor = COALESCE(vencedor, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-               new_m_hp, fase, vencedor, battle_id)
+    db.execute(
+        """
+        UPDATE batalhas
+        SET m_hp = ?, fase = ?, vencedor = COALESCE(vencedor, ?), updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        new_m_hp, fase, vencedor, battle_id
+    )
+
     b = get_battle(battle_id)
-    return jsonify(success=True, d20=d20, ataque=ataque_total, dano=dano, hit=hit, critico=critico,
-                   ca_monstro=monstro["ca"], battle=trim_battle(b)), 200
+
+    return jsonify(
+        success=True,
+        d20=d20,
+        ataque=ataque_total,
+        dano=dano,
+        hit=hit,
+        critico=critico,
+        ca_monstro=monstro.ca,   # <- objeto, não dict
+        battle=trim_battle(b),
+    ), 200
+
 
 @app.post("/batalha/roll/monster_attack")
 def batalha_monstro_attack():
     data = request.get_json(silent=True) or {}
     battle_id = int(data.get("battle_id") or 0)
-    if not battle_id: return jsonify(success=False, message="battle_id é obrigatório"), 400
+
+    if not battle_id:
+        return jsonify(success=False, message="battle_id é obrigatório"), 400
+
     b = get_battle(battle_id)
-    if not b: return jsonify(success=False, message="Batalha não encontrada"), 404
-    if b["fase"] != "monster": return jsonify(success=False, message="Não é a vez do monstro"), 400
+    if not b:
+        return jsonify(success=False, message="Batalha não encontrada"), 404
 
-    ficha = db.execute("SELECT * FROM fichas WHERE user_id = ? LIMIT 1", b["user_id"])[0]
-    class Target:
-        def __init__(self, vida, ca):
-            self.vida = vida
-            self.ca = ca
-    alvo = Target(b["j_vida"], ficha["ca"])
-    monstro = db.execute("SELECT * FROM monstros WHERE id = ? LIMIT 1", b["monstro_id"])[0]
-    # Por enquanto, monstro tipo Molodoy
-    mol = Molodoy()
-    resultado = mol.atacar(alvo)  
+    if b["fase"] != "monster":
+        return jsonify(success=False, message="Não é a vez do monstro"), 400
 
-    new_j_vida = int(alvo.vida)
+    # pega ficha e monstro do banco
+    ficha_row = db.execute(
+        "SELECT * FROM fichas WHERE user_id = ? LIMIT 1",
+        b["user_id"],
+    )[0]
+
+    monstro_row = db.execute(
+        "SELECT * FROM monstros WHERE id = ? LIMIT 1",
+        b["monstro_id"],
+    )[0]
+
+    ficha = Ficha.from_db_row(ficha_row)
+    monstro = Molodoy.from_db_row(monstro_row)  # por enquanto só Molodoy mesmo
+
+    # sobrescreve com os valores da batalha
+    ficha.vida = b["j_vida"]   # vida atual do jogador na batalha
+    monstro.hp = b["m_hp"]     # vida atual do monstro na batalha (se quiser usar depois)
+
+    # ataque do monstro contra a ficha
+    resultado = monstro.atacar(ficha)
+
+    d20 = resultado["d20"]
+    ataque_total = d20 + monstro.bonus_ataque  # total da rolagem do monstro
+
+    # interpreta o resultado
+    if resultado["tipo"] in ("errou", "falha"):
+        hit = False
+        critico = False
+        dano = 0
+    else:
+        hit = True
+        critico = resultado["critico"]
+        dano = resultado["dano"]
+
+    new_j_vida = resultado["hp_alvo"]  # vida do jogador depois do ataque
+
     vencedor = None
     fase = "player"
     if new_j_vida <= 0:
@@ -325,20 +381,33 @@ def batalha_monstro_attack():
         fase = "ended"
         vencedor = "monster"
 
-    db.execute("UPDATE batalhas SET j_vida = ?, fase = ?, vencedor = COALESCE(vencedor, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-               new_j_vida, fase, vencedor, battle_id)
+    db.execute(
+        """
+        UPDATE batalhas
+        SET j_vida = ?, fase = ?, vencedor = COALESCE(vencedor, ?),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        new_j_vida, fase, vencedor, battle_id
+    )
+
     b = get_battle(battle_id)
-    return jsonify(success=True,
-                   d20=resultado.get("d20", 0),
-                   ataque=resultado.get("ataque", 0),
-                   dano=resultado.get("dano", 0),
-                   hit=resultado.get("acerto", False),
-                   critico=resultado.get("critico", False),
-                   ca_jogador=ficha["ca"],
-                   battle=trim_battle(b)), 200
+
+    return jsonify(
+        success=True,
+        d20=d20,
+        ataque=ataque_total,
+        dano=dano,
+        hit=hit,
+        critico=critico,
+        ca_jogador=ficha.ca,
+        battle=trim_battle(b),
+    ), 200
+
 
 # ---------------------- utils batalha ----------------------
 def get_battle(battle_id: int):
+    """Retorna a batalha com o ID especificado, ou None se não existir."""
     rows = db.execute("SELECT * FROM batalhas WHERE id = ? LIMIT 1", battle_id)
     return rows[0] if rows else None
 
